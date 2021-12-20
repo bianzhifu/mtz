@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Mtz DashBoard</title>
+    <style>
+        body{
+            margin: 0px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        table td, table th {
+            border: 1px solid #ededed;
+            padding: 8px;
+        }
+
+        table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        table tr:hover {
+            background-color: #ededed;
+        }
+
+        table th {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            text-align: left;
+            background-color: #02a9f4;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <table>
+        <thead>
+        <tr>
+            <th style="width: 20px;">ID</th>
+            <th style="width: 180px;">Name</th>
+            <th style="width: 60px;">CPU</th>
+            <th style="width: 60px;">RAM</th>
+            <th style="width: 60px;">DISK</th>
+            <th style="width: 120px;">Load</th>
+            <th style="width: 120px;">Uptime</th>
+            <th style="width: 160px;">NetIO↑|↓</th>
+            <th style="width: 160px;">NetTraffic↑|↓</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr v-for="(server, index) in serverList">
+            <td>${server.id}</td>
+            <td :title="`KernelArch:${server.host.kernelArch}\nPlatform:${server.host.platform}/${server.host.platformVer}\nHostName:${server.host.hostname}\nProcs:${server.host.procs}\nAgentVersion:${server.version}`">${server.name}</td>
+            <td :title="`VendorId:${server.cpu.vendorId}\nModelName:${server.cpu.modelName}\nPhysicalCount:${server.cpu.physicalCount}`">${formatPercent(server.cpu.usedPercent)}</td>
+            <td :title="`MemTotal:${readableBytes(server.mem.total)}\nMemUsed:${readableBytes(server.mem.used)}\nSwapTotal:${readableBytes(server.swap.total)}\nSwapUsed:${readableBytes(server.swap.used)}`">${formatPercent(server.mem.usedPercent)}</td>
+            <td :title="`Total:${readableBytes(server.disk.total)}\nUsed:${readableBytes(server.disk.used)}`">${formatPercent(server.disk.usedPercent)}</td>
+            <td>${toFixed2(server.host.load1)},${toFixed2(server.host.load5)},${toFixed2(server.host.load15)}</td>
+            <td>${getTimeAge(server.host.uptime)}</td>
+            <td :title="`TcpCount:${server.net.tcpCount}\nUdpCount:${server.net.udpCount}`">${readableBytes(server.net.IO.up)}|${readableBytes(server.net.IO.down)}</td>
+            <td>${readableBytes(server.net.traffic.sent)}|${readableBytes(server.net.traffic.recv)}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.min.js"></script>
+
+<script>
+    function readableBytes(bytes) {
+        if (!bytes) {
+            return '0B'
+        }
+        var i = Math.floor(Math.log(bytes) / Math.log(1024)),
+            sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+        return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + sizes[i];
+    }
+
+    function toFixed2(f) {
+        return f.toFixed(2)
+    }
+
+    function formatPercent(usePercent) {
+        return parseFloat((usePercent).toFixed(2)) + "%"
+    }
+
+    function getTimeAge(timesec) {
+        var ago = "";
+        if (timesec / 86400 >= 1) {
+            ago = ago + parseInt(timesec / 86400) + 'd ';
+        }
+        timesec = timesec % 86400
+        if (timesec / 3600 >= 1) {
+            if (timesec / 3600 < 10) {
+                ago = ago + "0"
+            }
+            ago = ago + parseInt(timesec / 3600) + ':';
+        } else {
+            ago = ago + '00:';
+        }
+        timesec = timesec % 3600
+        if (timesec / 60 >= 1) {
+            if (timesec / 60 < 10) {
+                ago = ago + "0"
+            }
+            ago = ago + parseInt(timesec / 60) + ':';
+        } else {
+            ago = ago + '00:';
+        }
+        timesec = timesec % 60
+        if (timesec < 10) {
+            ago = ago + "0"
+        }
+        ago = ago + parseInt(timesec);
+        return ago
+    }
+
+    var ConfServerList = {{ .serverStatus }};
+
+    var statusCards = new Vue({
+        delimiters: ['${', '}'],
+        el: '#app',
+        data: {
+            serverList: ConfServerList
+        }
+    })
+</script>
+<script>
+    function connect() {
+        const wsProtocol = window.location.protocol == "https:" ? "wss" : "ws"
+        const ws = new WebSocket(wsProtocol + '://' + window.location.host + '/client')
+        ws.onopen = function (evt) {
+            console.log("Connection open ...");
+            setInterval(function (){
+                ws.send("{\"type\":2}")
+            },5000)
+        };
+        ws.onmessage = function (evt) {
+            const status = JSON.parse(evt.data)
+            for (var i = 0; i < statusCards.serverList.length; i++) {
+                if (statusCards.serverList[i].id == status.id) {
+                    Vue.set(statusCards.serverList, i, status)
+                }
+            }
+        };
+        ws.onclose = function (evt) {
+            console.log("Connection closed.");
+        };
+    }
+    connect();
+</script>
+</body>
+</html>
